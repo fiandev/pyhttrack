@@ -107,7 +107,8 @@ jobs:
           New-Item -ItemType Directory -Force -Path build\pyhttrack-windows-${{ matrix.arch }}
           Move-Item dist\pyhttrack.exe build\pyhttrack-windows-${{ matrix.arch }}\
           New-Item -ItemType Directory -Force -Path build\pyhttrack-windows-${{ matrix.arch }}\web
-          Copy-Item README.md LICENSE build\pyhttrack-windows-${{ matrix.arch }}\
+          Copy-Item README.md build\pyhttrack-windows-${{ matrix.arch }}\
+          Copy-Item LICENSE build\pyhttrack-windows-${{ matrix.arch }}\
           Compress-Archive -Path build\pyhttrack-windows-${{ matrix.arch }}\* -DestinationPath pyhttrack-windows-${{ matrix.arch }}.tar.gz
 
       - name: Upload artifacts
