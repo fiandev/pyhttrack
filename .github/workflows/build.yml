@@ -65,14 +65,13 @@ jobs:
           path: pyhttrack-linux-${{ matrix.arch }}.tar.gz
 
   build-windows:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: x64
           - arch: x86
-          - arch: arm64
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -82,9 +81,6 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Install wget
-        run: sudo apt-get update && sudo apt-get install -y wget
-
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
@@ -92,35 +88,27 @@ jobs:
 
       - name: Download wget binaries for Windows
         run: |
-          mkdir -p wget/${{ matrix.arch }}
-          cd wget/${{ matrix.arch }}
-          
-          case "${{ matrix.arch }}" in
-            x64)
-              wget -q -O wget.exe https://github.com/KnugiHK/wget-on-windows/releases/download/v1.25.0/wget-gnutls-x64.exe
-              ;;
-            x86)
-              wget -q -O wget.exe https://github.com/KnugiHK/wget-on-windows/releases/download/v1.25.0/wget-gnutls-x86.exe
-              ;;
-            arm64)
-              wget -q -O wget.exe https://github.com/KnugiHK/wget-on-windows/releases/download/v1.25.0/wget-gnutls-arm64.exe
-              ;;
-          esac
-          chmod +x wget.exe
+          $arch = "${{ matrix.arch }}"
+          New-Item -ItemType Directory -Force -Path "wget\$arch"
+          $url = switch ($arch) {
+            "x64" { "https://github.com/KnugiHK/wget-on-windows/releases/download/v1.25.0/wget-gnutls-x64.exe" }
+            "x86" { "https://github.com/KnugiHK/wget-on-windows/releases/download/v1.25.0/wget-gnutls-x86.exe" }
+          }
+          Invoke-WebRequest -Uri $url -OutFile "wget\$arch\wget.exe"
 
       - name: Build binary for Windows
         run: |
-          pyinstaller --onefile --name pyhttrack \
-            --add-data "wget:wget" \
-            --add-data "web.json:." \
-            --hidden-import colorama \
-            --console \
+          pyinstaller --onefile --name pyhttrack `
+            --add-data "wget;wget" `
+            --add-data "web.json;." `
+            --hidden-import colorama `
+            --console `
             pyhttrack.py
-          mkdir -p build/pyhttrack-windows-${{ matrix.arch }}
-          mv dist/pyhttrack.exe build/pyhttrack-windows-${{ matrix.arch }}/
-          mkdir -p build/pyhttrack-windows-${{ matrix.arch }}/web
-          cp README.md LICENSE build/pyhttrack-windows-${{ matrix.arch }}/
-          tar -czvf pyhttrack-windows-${{ matrix.arch }}.tar.gz -C build pyhttrack-windows-${{ matrix.arch }}
+          New-Item -ItemType Directory -Force -Path build\pyhttrack-windows-${{ matrix.arch }}
+          Move-Item dist\pyhttrack.exe build\pyhttrack-windows-${{ matrix.arch }}\
+          New-Item -ItemType Directory -Force -Path build\pyhttrack-windows-${{ matrix.arch }}\web
+          Copy-Item README.md LICENSE build\pyhttrack-windows-${{ matrix.arch }}\
+          Compress-Archive -Path build\pyhttrack-windows-${{ matrix.arch }}\* -DestinationPath pyhttrack-windows-${{ matrix.arch }}.tar.gz
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
