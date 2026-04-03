@@ -37,42 +37,17 @@ jobs:
         with:
           python-version: '3.x'
 
+      - name: Install wget
+        run: sudo apt-get update && sudo apt-get install -y wget
+
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Download wget binaries for Linux
-        run: |
-          mkdir -p wget/${{ matrix.arch }}
-          cd wget/${{ matrix.arch }}
-          
-          case "${{ matrix.arch }}" in
-            x64)
-              wget -q -O wget https://raw.githubusercontent.com/ermshiperete/wget-static/master/wget/x86_64-linux-gnu/wget
-              ;;
-            x86)
-              wget -q -O wget https://raw.githubusercontent.com/ermshiperete/wget-static/master/wget/i686-linux-gnu/wget
-              ;;
-            arm64)
-              wget -q -O wget https://raw.githubusercontent.com/ermshiperete/wget-static/master/wget/aarch64-linux-gnu/wget
-              ;;
-            armv7)
-              wget -q -O wget https://raw.githubusercontent.com/ermshiperete/wget-static/master/wget/arm-linux-gnueabihf/wget
-              ;;
-            ppc64le)
-              wget -q -O wget https://raw.githubusercontent.com/ermshiperete/wget-static/master/wget/powerpc64le-linux-gnu/wget
-              ;;
-            s390x)
-              wget -q -O wget https://raw.githubusercontent.com/ermshiperete/wget-static/master/wget/s390x-linux-gnu/wget
-              ;;
-          esac
-          chmod +x wget
-
       - name: Build binary for Linux
         run: |
           pyinstaller --onefile --name pyhttrack \
-            --add-data "wget:wget" \
             --add-data "web.json:." \
             --hidden-import colorama \
             --console \
@@ -107,6 +82,9 @@ jobs:
         with:
           python-version: '3.x'
 
+      - name: Install wget
+        run: sudo apt-get update && sudo apt-get install -y wget
+
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
@@ -119,13 +97,13 @@ jobs:
           
           case "${{ matrix.arch }}" in
             x64)
-              wget -q -O wget.exe https://raw.githubusercontent.com/ermshiperete/wget-static/master/wget/x86_64-w64-mingw32/wget.exe
+              wget -q -O wget.exe https://github.com/KnugiHK/wget-on-windows/releases/download/v1.25.0/wget64.exe
               ;;
             x86)
-              wget -q -O wget.exe https://raw.githubusercontent.com/ermshiperete/wget-static/master/wget/i686-w64-mingw32/wget.exe
+              wget -q -O wget.exe https://github.com/KnugiHK/wget-on-windows/releases/download/v1.25.0/wget32.exe
               ;;
             arm64)
-              wget -q -O wget.exe https://raw.githubusercontent.com/ermshiperete/wget-static/master/wget/aarch64-w64-mingw32/wget.exe
+              wget -q -O wget.exe https://github.com/KnugiHK/wget-on-windows/releases/download/v1.25.0/wget_arm64.exe
               ;;
           esac
           chmod +x wget.exe

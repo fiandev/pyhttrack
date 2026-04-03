@@ -3,3 +3,4 @@ log.txt
 web.json
 dist
 build
+__pycache__/
