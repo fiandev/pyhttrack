@@ -1,3 +1,5 @@
 web
 log.txt
 web.json
+dist
+build

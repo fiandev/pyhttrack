@@ -1,0 +1,171 @@
+name: Build PyHttrack
+
+on:
+  push:
+    branches: [main, master]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            gnu_arch: x86_64
+          - arch: x86
+            gnu_arch: i686
+          - arch: arm64
+            gnu_arch: aarch64
+          - arch: armv7
+            gnu_arch: armv7l
+          - arch: ppc64le
+            gnu_arch: ppc64le
+          - arch: s390x
+            gnu_arch: s390x
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Download wget binaries for Linux
+        run: |
+          mkdir -p wget/${{ matrix.arch }}
+          cd wget/${{ matrix.arch }}
+          
+          case "${{ matrix.arch }}" in
+            x64)
+              wget -q -O wget https://raw.githubusercontent.com/ermshiperete/wget-static/master/wget/x86_64-linux-gnu/wget
+              ;;
+            x86)
+              wget -q -O wget https://raw.githubusercontent.com/ermshiperete/wget-static/master/wget/i686-linux-gnu/wget
+              ;;
+            arm64)
+              wget -q -O wget https://raw.githubusercontent.com/ermshiperete/wget-static/master/wget/aarch64-linux-gnu/wget
+              ;;
+            armv7)
+              wget -q -O wget https://raw.githubusercontent.com/ermshiperete/wget-static/master/wget/arm-linux-gnueabihf/wget
+              ;;
+            ppc64le)
+              wget -q -O wget https://raw.githubusercontent.com/ermshiperete/wget-static/master/wget/powerpc64le-linux-gnu/wget
+              ;;
+            s390x)
+              wget -q -O wget https://raw.githubusercontent.com/ermshiperete/wget-static/master/wget/s390x-linux-gnu/wget
+              ;;
+          esac
+          chmod +x wget
+
+      - name: Build binary for Linux
+        run: |
+          pyinstaller --onefile --name pyhttrack \
+            --add-data "wget:wget" \
+            --add-data "web.json:." \
+            --hidden-import colorama \
+            --console \
+            pyhttrack.py
+          mkdir -p build/pyhttrack-linux-${{ matrix.arch }}
+          mv dist/pyhttrack build/pyhttrack-linux-${{ matrix.arch }}/
+          mkdir -p build/pyhttrack-linux-${{ matrix.arch }}/web
+          cp README.md LICENSE build/pyhttrack-linux-${{ matrix.arch }}/
+          tar -czvf pyhttrack-linux-${{ matrix.arch }}.tar.gz -C build pyhttrack-linux-${{ matrix.arch }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyhttrack-linux-${{ matrix.arch }}
+          path: pyhttrack-linux-${{ matrix.arch }}.tar.gz
+
+  build-windows:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+          - arch: x86
+          - arch: arm64
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Download wget binaries for Windows
+        run: |
+          mkdir -p wget/${{ matrix.arch }}
+          cd wget/${{ matrix.arch }}
+          
+          case "${{ matrix.arch }}" in
+            x64)
+              wget -q -O wget.exe https://raw.githubusercontent.com/ermshiperete/wget-static/master/wget/x86_64-w64-mingw32/wget.exe
+              ;;
+            x86)
+              wget -q -O wget.exe https://raw.githubusercontent.com/ermshiperete/wget-static/master/wget/i686-w64-mingw32/wget.exe
+              ;;
+            arm64)
+              wget -q -O wget.exe https://raw.githubusercontent.com/ermshiperete/wget-static/master/wget/aarch64-w64-mingw32/wget.exe
+              ;;
+          esac
+          chmod +x wget.exe
+
+      - name: Build binary for Windows
+        run: |
+          pyinstaller --onefile --name pyhttrack \
+            --add-data "wget:wget" \
+            --add-data "web.json:." \
+            --hidden-import colorama \
+            --console \
+            pyhttrack.py
+          mkdir -p build/pyhttrack-windows-${{ matrix.arch }}
+          mv dist/pyhttrack.exe build/pyhttrack-windows-${{ matrix.arch }}/
+          mkdir -p build/pyhttrack-windows-${{ matrix.arch }}/web
+          cp README.md LICENSE build/pyhttrack-windows-${{ matrix.arch }}/
+          tar -czvf pyhttrack-windows-${{ matrix.arch }}.tar.gz -C build pyhttrack-windows-${{ matrix.arch }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyhttrack-windows-${{ matrix.arch }}
+          path: pyhttrack-windows-${{ matrix.arch }}.tar.gz
+
+  release:
+    needs: [build-linux, build-windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
