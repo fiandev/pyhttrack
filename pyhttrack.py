@@ -5,6 +5,8 @@ import shutil
 import sys
 import platform
 import argparse
+import threading
+import time
 from datetime import datetime
 from colorama import Fore, Style, init as colorama_init
 
@@ -100,11 +102,19 @@ os.system("cls" if os.name == "nt" else "clear")
 results = []
 urls = []
 
-web_dir = os.path.join(BASE_DIR, "web")
+web_dir = (
+    os.path.join(os.path.expanduser("~"), "pyhttrack")
+    if system == "linux"
+    else os.getcwd()
+)
 os.makedirs(web_dir, exist_ok=True)
 
 try:
-    web_json_path = os.path.join(BASE_DIR, "web.json")
+    web_json_path = (
+        os.path.join(os.path.expanduser("~"), "pyhttrack", "web.json")
+        if system == "linux"
+        else os.path.join(BASE_DIR, "web.json")
+    )
     with open(web_json_path, "r") as file:
         urls = json.load(file)
 except FileNotFoundError:
@@ -114,6 +124,36 @@ if args.url:
     urls = [args.url]
 
 print_banner()
+
+spinner_active = False
+spinner_stop_event = threading.Event()
+
+
+def spin():
+    chars = "|/-\\"
+    idx = 0
+    while not spinner_stop_event.is_set():
+        sys.stdout.write(
+            f"\r{Fore.CYAN}Downloading... {chars[idx % len(chars)]}{Style.RESET_ALL}"
+        )
+        sys.stdout.flush()
+        idx += 1
+        time.sleep(0.1)
+    sys.stdout.flush()
+
+
+def start_spinner():
+    global spinner_active
+    spinner_active = True
+    spinner_stop_event.clear()
+    threading.Thread(target=spin, daemon=True).start()
+
+
+def stop_spinner():
+    global spinner_active
+    spinner_active = False
+    spinner_stop_event.set()
+
 
 if not urls:
     print("No URLs found in 'web.json'.")
@@ -125,6 +165,7 @@ print("==================\n")
 for url in urls:
     print(f"Downloading: {url}\n")
     url_has_result = False
+    start_spinner()
 
     try:
         process = subprocess.Popen(
@@ -132,7 +173,6 @@ for url in urls:
                 wget_exec,
                 "-r",
                 "-m",
-                "-c",
                 "--no-parent",
                 "--convert-links",
                 "--adjust-extension",
@@ -142,7 +182,6 @@ for url in urls:
                 "--wait=1",
                 "--timeout=15",
                 "--tries=3",
-                "--no-clobber",
                 "--no-check-certificate",
                 "--retry-connrefused",
                 "-e",
@@ -161,39 +200,14 @@ for url in urls:
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             line = line.strip()
 
-            if "ERROR 404" in line or "404 Not Found" in line:
-                results.append(
-                    {
-                        "timestamp": now,
-                        "url": url,
-                        "file": "-",
-                        "status": "404 not found",
-                        "size": "-",
-                    }
-                )
-                print(f"{Fore.RED}[{now}] 404 Not Found:{Style.RESET_ALL} {url}")
-                continue
-
-            elif "403 Forbidden" in line:
-                results.append(
-                    {
-                        "timestamp": now,
-                        "url": url,
-                        "file": "-",
-                        "status": "403 forbidden",
-                        "size": "-",
-                    }
-                )
-                print(f"{Fore.RED}[{now}] 403 Forbidden:{Style.RESET_ALL} {url}")
-                continue
-
-            elif "saved [" in line and "'" in line:
+            if "Saving" in line and "/" in line:
                 try:
-                    path = line.split("'")[1]
-                    raw_size = line.split("saved [")[-1].split("]")[0]
-                    byte_size = raw_size.split("/")[-1]
-                    size = format_size(byte_size)
-
+                    path = (
+                        line.split("'")[1]
+                        if "'" in line
+                        else line.split("Saving ")[-1].strip()
+                    )
+                    size = "-"
                     results.append(
                         {
                             "timestamp": now,
@@ -203,9 +217,65 @@ for url in urls:
                             "size": size,
                         }
                     )
-                    print(
-                        f"{Fore.GREEN}[{now}] Downloaded:{Style.RESET_ALL} {path} | {size}"
+                    print(f"{Fore.GREEN}[{now}] Downloaded:{Style.RESET_ALL} {path}")
+                    url_has_result = True
+                except:
+                    continue
+
+            elif "HTTP response 304" in line:
+                try:
+                    results.append(
+                        {
+                            "timestamp": now,
+                            "url": url,
+                            "file": "-",
+                            "status": "success",
+                            "size": "-",
+                        }
                     )
+                    print(
+                        f"{Fore.YELLOW}[{now}] Already up to date:{Style.RESET_ALL} {url}"
+                    )
+                    url_has_result = True
+                except:
+                    continue
+
+            elif "convert" in line.lower() and "http" not in line.lower():
+                try:
+                    results.append(
+                        {
+                            "timestamp": now,
+                            "url": url,
+                            "file": "-",
+                            "status": "success",
+                            "size": "-",
+                        }
+                    )
+                    print(
+                        f"{Fore.GREEN}[{now}] Download Complete:{Style.RESET_ALL} {url}"
+                    )
+                    url_has_result = True
+                except:
+                    continue
+
+            elif "not modified" in line and "'" in line:
+                try:
+                    path = (
+                        line.split("'")[1]
+                        if "'" in line
+                        else line.split("Saving ")[-1].strip()
+                    )
+                    size = "-"
+                    results.append(
+                        {
+                            "timestamp": now,
+                            "url": url,
+                            "file": path,
+                            "status": "success",
+                            "size": size,
+                        }
+                    )
+                    print(f"{Fore.GREEN}[{now}] Downloaded:{Style.RESET_ALL} {path}")
                     url_has_result = True
                 except:
                     continue
@@ -248,9 +318,16 @@ for url in urls:
         results.append(
             {"timestamp": now, "url": url, "file": "-", "status": "failed", "size": "-"}
         )
+    finally:
+        stop_spinner()
 
 if results:
-    log_path = os.path.join(BASE_DIR, "log.txt")
+    base_dir_for_log = (
+        os.path.join(os.path.expanduser("~"), "pyhttrack")
+        if system == "linux"
+        else BASE_DIR
+    )
+    log_path = os.path.join(base_dir_for_log, "log.txt")
     with open(log_path, "a", encoding="utf-8") as log_file:
         for result in results:
             log_file.write(
@@ -269,3 +346,21 @@ failed = sum(
 print(f"\n{Fore.GREEN}Success : {success}{Style.RESET_ALL}")
 print(f"{Fore.YELLOW}Skipped : {skipped}{Style.RESET_ALL}")
 print(f"{Fore.RED}Failed  : {failed}{Style.RESET_ALL}")
+
+output_base = (
+    os.path.join(os.path.expanduser("~"), "pyhttrack")
+    if system == "linux"
+    else os.getcwd()
+)
+
+if results:
+    print(f"\n{Fore.CYAN}Output  :{Style.RESET_ALL}")
+    for r in results:
+        if r["status"] == "success":
+            if r["file"] != "-":
+                folder = r["file"].split("/")[0] if "/" in r["file"] else r["file"]
+            else:
+                from urllib.parse import urlparse
+
+                folder = urlparse(r["url"]).netloc
+            print(f"  {output_base}/{folder}")
